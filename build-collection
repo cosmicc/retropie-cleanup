@@ -1,0 +1,87 @@
+#!/usr/bin/env python3
+
+import argparse
+from sys import exit
+from pathlib import Path
+from collections import OrderedDict
+
+parser = argparse.ArgumentParser()
+parser.add_argument('-l', '--list', action='store_true', help='list custom collections')
+parser.add_argument('-c', '--collection', action='store', help='custom collection name')
+parser.add_argument('-s', '--search', help='comma list of search strings', type=str)
+parser.add_argument('-n', '--new', action='store_true', help='start collection from new (dont import old)')
+parser.add_argument('-t', '--test', action='store_true', help='dont commit changes to collection')
+args = parser.parse_args()
+
+collectionpath = '/opt/retropie/configs/all/emulationstation/collections'
+rompath = '/home/pi/RetroPie/roms'
+
+customcolls = []
+pathlist = Path(collectionpath).glob('custom-*.cfg')
+for path in pathlist:
+    pathstr = str(path)
+    customcolls.append(pathstr.split('custom-')[1][:-4])
+
+if args.list:
+    customcolls.sort()
+    for each in customcolls:
+        print(each)
+    exit()
+
+if args.collection is not None:
+    if args.collection not in customcolls and not args.new:
+        print('Collection not found.  use -n option to create a new collection, -l to list current collections')
+        exit()
+    collectionfile = 'custom-%s.cfg' % (args.collection)
+else:
+    print('You need to specify a collection to work with with the -c option, -l to list current collections')
+    exit()
+
+if not args.new:
+    with open('%s/%s' % (collectionpath,collectionfile)) as f:
+        masterlist = f.read().splitlines()
+else:
+    masterlist = []
+
+if args.search is None:
+    print('You need at least 1 rom file search string to create a collection')
+    exit()
+else:
+    searchlist = [str(item) for item in args.search.split(',')]
+    print('Using search arguments: %s' % (searchlist))
+
+def yes_or_no(question):
+    while "the answer is invalid":
+        reply = str(input(question+' (y/n): ')).lower().strip()
+        if reply[:1] == 'y':
+            return True
+        if reply[:1] == 'n':
+            return False
+
+for searchvar in searchlist:
+    altlist = [searchvar, searchvar.title(), searchvar.upper()]
+    for etype in altlist:
+        newsearchvar = '**/*%s*' % (etype)
+        pathlist = Path(rompath).glob(newsearchvar)
+        for path in pathlist:
+             pathstr = str(path)
+             ext = Path(path).suffix
+             if ext != '.jpg' and ext != '.png' and ext != '.mp4' and ext != '.cfg':
+                if pathstr not in masterlist:
+                    if yes_or_no('Add: %s ?' % (pathstr)):
+                        masterlist.append(pathstr)
+
+mlength = len(masterlist)
+newmaster = list(OrderedDict.fromkeys(masterlist))
+nmlength = len(masterlist)
+print('Removed %s duplicates' % (mlength - nmlength))
+print('Total games in collection: %s' % (nmlength))
+
+if not args.test:
+    if yes_or_no('Write to file: %s/%s ?' % (collectionpath,collectionfile)):
+        with open('%s/%s' % (collectionpath,collectionfile), 'w') as f:
+            for line in masterlist:
+                f.write("%s\n" % line)
+        print('Collection written to file')
+    else:
+        print('Collection file not written')
